@@ -1,11 +1,11 @@
-/*********
-  Rui Santos
-  Complete project details at https://randomnerdtutorials.com  
-*********/
+
 
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <Wire.h>
+
+// SI7021 I2C address is 0x40(64)
+#define si7021Addr 0x40
 
 // Replace the next variables with your SSID/Password combination
 const char* ssid = "MNM";
@@ -36,6 +36,11 @@ void setup() {
   client.setCallback(callback);
 
   pinMode(ledPin, OUTPUT);
+
+  Wire.begin();
+  Wire.beginTransmission(si7021Addr);
+  Wire.endTransmission();
+  delay(300);
 }
 
 void setup_wifi() {
@@ -106,6 +111,7 @@ void reconnect() {
   }
 }
 void loop() {
+
   if (!client.connected()) {
     reconnect();
   }
@@ -114,21 +120,57 @@ void loop() {
   long now = millis();
   if (now - lastMsg > 5000) {
     lastMsg = now;
-    
-    // Temperature in Celsius
-    temperature = temperature  + 1.0;
-    // Uncomment the next line to set temperature in Fahrenheit 
-    // (and comment the previous temperature line)
-    //temperature = 1.8 * bme.readTemperature() + 32; // Temperature in Fahrenheit
+
+    // SI7021 READING
+    unsigned int data[2];
+     
+    Wire.beginTransmission(si7021Addr);
+    //Send humidity measurement command
+    Wire.write(0xF5);
+    Wire.endTransmission();
+    delay(500);
+       
+    // Request 2 bytes of data
+    Wire.requestFrom(si7021Addr, 2);
+    // Read 2 bytes of data to get humidity
+    if(Wire.available() == 2)
+    {
+      data[0] = Wire.read();
+      data[1] = Wire.read();
+    }
+       
+    // Convert the data
+    float humidity  = ((data[0] * 256.0) + data[1]);
+    humidity = ((125 * humidity) / 65536.0) - 6;
+   
+    Wire.beginTransmission(si7021Addr);
+    // Send temperature measurement command
+    Wire.write(0xF3);
+    Wire.endTransmission();
+    delay(500);
+       
+    // Request 2 bytes of data
+    Wire.requestFrom(si7021Addr, 2);
+     
+    // Read 2 bytes of data for temperature
+    if(Wire.available() == 2)
+    {
+      data[0] = Wire.read();
+      data[1] = Wire.read();
+    }
+   
+    // Convert the data
+    float temp  = ((data[0] * 256.0) + data[1]);
+    float celsTemp = ((175.72 * temp) / 65536.0) - 46.85;
+    //float fahrTemp = celsTemp * 1.8 + 32;
     
     // Convert the value to a char array
     char tempString[8];
-    dtostrf(temperature, 1, 2, tempString);
+    dtostrf(celsTemp, 1, 2, tempString);
     Serial.print("Temperature: ");
     Serial.println(tempString);
     client.publish("esp32/temperature", tempString);
 
-    humidity = humidity + 1.0;
     
     // Convert the value to a char array
     char humString[8];
